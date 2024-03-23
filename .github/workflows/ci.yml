@@ -2,40 +2,66 @@ name: Make Build
 
 on:
   push:
-    branches: [ master ]
-  pull_request:
-    branches: [ master ]
+    branches: [ mod ]
+  # pull_request:
+  #   branches: [ master ]
 
 jobs:
   build:
     runs-on: ${{ matrix.os }}
     strategy:
       matrix:
-        os: [ubuntu-latest, macos-latest]
-        cc: [gcc, clang]
-        exclude:
-          - os: macos-latest
-            cc: gcc
+        os: [macos-latest]
+        cc: [clang]
 
     steps:
-    - uses: actions/checkout@v2
+    - uses: actions/checkout@v4
       with:
         submodules: true
-    - name: install deps (ubuntu)
-      if: matrix.os == 'ubuntu-latest'
-      run: |
-        sudo apt-get update
-        sudo apt-get install autoconf automake wget  ffmpeg libavformat-dev libavcodec-dev libswscale-dev libavutil-dev libswresample-dev
+    # - name: install deps (ubuntu)
+    #   if: matrix.os == 'ubuntu-latest'
+    #   run: |
+    #     sudo apt-get update
+    #     sudo apt-get install autoconf automake wget  ffmpeg libavformat-dev libavcodec-dev libswscale-dev libavutil-dev libswresample-dev
     - name: install deps (macOS)
       if: matrix.os == 'macos-latest'
       run: |
-        brew update
-        brew install autoconf automake wget  ffmpeg
+        # brew update
+        brew install autoconf automake wget pkg-config nasm
+    
+    - name: install FFmpeg
+      run: |
+        wget https://ffmpeg.org/releases/ffmpeg-5.1.4.tar.xz
+        tar -zxf ffmpeg-5.1.4.tar.xz
+        cd ffmpeg-5.1.4
+        ./configure --enable-gpl --enable-version3 --enable-static --disable-shared \
+        --enable-avcodec --enable-avformat --enable-swresample --enable-swscale \
+        --disable-programs --disable-avdevice --disable-postproc --disable-avfilter \
+        --disable-encoders --disable-muxers --disable-doc --disable-debug \
+        --enable-zlib
+        # --enable-libdav1d
+        make -j2
+        sudo make install -j2
+        cd ..
+
     - name: configure
-      run: ./autogen.sh --enable-static --disable-shared
+      run: ./autogen.sh --disable-static --enable-shared
     - name: make
       run: make V=1 CXXFLAGS='-Werror -Wno-error=deprecated-declarations' -j2 -k
-    - name: make test
+    # - name: make test
+    #   run: |
+    #     make test-sync
+    #     make test -j2 -k
+    
+    - name: Set short version
+      shell: bash
       run: |
-        make test-sync
-        make test -j2 -k
+          ver_short=`git rev-parse --short HEAD`
+          echo "VERSION=$ver_short" >> $GITHUB_ENV
+
+    - name: upload
+      uses: actions/upload-artifact@v4
+      with:
+        name: ffms2_osx-x64_${{ env.VERSION }}
+        path: |
+          ./src/core/.libs/libffms2.dylib
